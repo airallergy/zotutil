@@ -1,6 +1,6 @@
 # zotpy
 
-This is a repository of supplementary tools to assist the use of [Zotero](https://www.zotero.org) and its [plugins](https://www.zotero.org/support/plugins) via [Pyzotero](https://github.com/urschrei/pyzotero).
+This is a repository of supplementary tools to assist the use of [Zotero](https://www.zotero.org) and its [plugins](https://www.zotero.org/support/plugins) via [pyzotero](https://github.com/urschrei/pyzotero).
 
 ## Tools
 
