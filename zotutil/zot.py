@@ -21,6 +21,14 @@ _ZOT_DEFAULT_PROFILE_RELATIVE_PATHS_PARTS = {
 
 class Zot:
     """Create a Zotero library object.
+    Default directories:
+        installation directory:
+            Mac: /Applications/Zotero.app/Contents/Resources
+            Windows 10/8/7/Vista: C:\\Program Files (x86)\\Zotero
+        profile directory:
+            Mac: /Users/[username]/Library/Application Support/Zotero
+            Windows 10/8/7/Vista: C:\\Users\\[User Name]\\AppData\\Roaming\\Zotero\\Zotero
+    they need to be specified if customised.
 
     Parameters
     ----------
@@ -65,7 +73,6 @@ class Zot:
         )
 
     def _retrieve_data_directory(self):
-        # https://www.zotero.org/support/zotero_data#default_locations
         self._data_directory = Path(
             self._retrieve_preference("extensions.zotero.dataDir")
         )
@@ -182,7 +189,7 @@ class Zot:
         try:
             return re.search(re_pattern, preferences).group(0)
         except:
-            raise ValueError("no preference infomation found")
+            raise ValueError('no "' + preference_key + '" information found')
 
     # def retrieve_entries(self, **kwargs):
     #     if "limit" in kwargs:
@@ -191,23 +198,31 @@ class Zot:
     #         entries = self._library.everything(self.__library.top(**kwargs))
     #     return entries
 
-    def set_directory(self, installation_directory=None, profile_directory=None):
-        """Set user defined directories.
+    @property
+    def installation_directory(self):
+        return self._installation_directory
 
-        Parameters
-        ----------
-        installation_directory : str
-            User defined directory where Zotero is installed.
-        profile_directory : str
-            User defined directory where the Zotero profile is stored.
+    @property
+    def profile_directory(self):
+        return self._profile_directory
 
-        """
-        if installation_directory:
-            self._installation_directory = Path(installation_directory)
-        if profile_directory:
-            self._profile_directory = Path(profile_directory)
-            self._retrieve_data_directory()
-            self._retrieve_attachment_base_directory()
+    @installation_directory.setter
+    def installation_directory(self, installation_directory_str):
+        installation_directory = Path(installation_directory_str)
+        if installation_directory.is_dir():
+            self._installation_directory = installation_directory
+        else:
+            raise ValueError("invalid directory: " + installation_directory_str)
+
+    @profile_directory.setter
+    def profile_directory(self, profile_directory_str):
+        profile_directory = Path(profile_directory_str)
+        if profile_directory.is_dir():
+            self._profile_directory = profile_directory
+        else:
+            raise ValueError("invalid directory: " + profile_directory_str)
+        self._retrieve_data_directory()
+        self._retrieve_attachment_base_directory()
 
     def retrieve_attachment_relative_paths(self, **kwargs):
         attachment_entries = self._library.everything(
@@ -329,6 +344,9 @@ class Zot:
                 unlinked_files_removal_map_path.unlink()
             except:
                 pass
+
+    def delete_unlinked_files(self):
+        pass
 
     def recover_unlinked_files(self):
         pass
