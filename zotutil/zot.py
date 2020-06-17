@@ -8,8 +8,12 @@ from zipfile import ZipFile
 from io import TextIOWrapper
 import json
 
+_ZOT_INSTALLATION_PATHS_PARTS = {
+    "darwin": ("/", "Applications", "Zotero.app", "Contents", "Resources"),
+    "win32": ("C:\\", "Program Files (x86)", "Zotero"),
+}
 
-_ZOT_PROFILE_RELATIVE_PATHS = {
+_ZOT_PROFILE_RELATIVE_PATHS_PARTS = {
     "darwin": ("Library", "Application Support", "Zotero"),
     "win32": ("AppData", "Roaming", "Zotero", "Zotero"),
 }
@@ -49,12 +53,12 @@ class Zot:
 
     @staticmethod
     def _get_installation_directory():
-        return None
+        return Path(*_ZOT_INSTALLATION_PATHS_PARTS[sys.platform])
 
     @staticmethod
     def _get_profile_directory():
         # Windows >= Vista, https://www.zotero.org/support/kb/profile_directory#profile_directory_location
-        return Path.home().joinpath(*_ZOT_PROFILE_RELATIVE_PATHS[sys.platform])
+        return Path.home().joinpath(*_ZOT_PROFILE_RELATIVE_PATHS_PARTS[sys.platform])
 
     def _get_data_directory(self):
         # https://www.zotero.org/support/zotero_data#default_locations
@@ -93,9 +97,12 @@ class Zot:
             if preference_owner is None:
                 raise ValueError("preference owner undefined")
             elif preference_owner.lower() == "zotero":
-                return Path(
-                    "/Applications/Zotero.app/Contents/Resources/defaults/preferences/zotero.js"
-                )  # revision needed for other os
+                return (
+                    self._installation_directory
+                    / "defaults"
+                    / "preferences"
+                    / "zotero.js"
+                )
             else:
                 profile_config = ConfigParser()
                 profile_config.read(self._profile_directory / "profiles.ini")
