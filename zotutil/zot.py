@@ -240,31 +240,31 @@ class Zot:
             attachment_relative_paths.append(attachment_relative_path)
         return attachment_relative_paths
 
-    def retrieve_unlinked_files_maps(self):
+    def retrieve_files_removal_maps(self):
         """Retrieve all unlinked files maps generated in the removal.
 
         Yields
         ----------
         out : generator
-            A generator of all maps derived from different removed filed directories.
+            A generator of all maps derived from different removed files directories.
 
         """
-        for unlinked_files_removal_map_path in self._attachment_base_directory.glob(
-            "**/_unlinked_files_removal_map.json"
+        for files_removal_map_path in self._attachment_base_directory.glob(
+            "**/_files_removal_map.json"
         ):
-            with unlinked_files_removal_map_path.open("rt") as fh:
+            with files_removal_map_path.open("rt") as fh:
                 yield json.load(fh)
 
-    def remove_unlinked_files(self, zotfile=True, delete=False, file_types=None):
+    def remove_unlinked_files(self, zotfile=True, deletion=False, file_types=None):
         """Remove unlinked files from the Zotero attachment directory.
 
         Parameters
         ----------
         zotfile : bool, optional
-            Use of ZotFile to manage the attachment links,
+            Whether or not ZotFile is used to manage the attachment links,
             when True, any input for `file_types` will be ignored.
-        delete : bool, optional
-            Delete or remove the unlined files.
+        deletion : bool, optional
+            Whether or not to delete the removed files.
         file_types : iterable or string, optional
             File types to inspect when `zotfile` is `False`,
             e.g. ["pdf", "doc"], ("docx", "txt"), numpy.array(["rtf", "djvu"]), etc.
@@ -287,16 +287,14 @@ class Zot:
                     preference_type="default",
                     preference_owner="zotfile",
                 )
-            file_types = tuple(
-                [file_type.strip() for file_type in file_types.split(",")]
-            )
+            file_types = tuple(file_type.strip() for file_type in file_types.split(","))
         else:
             if file_types is None:
                 raise ValueError("no file types specified")
             try:
                 if isinstance(file_types, str):
                     file_types = tuple(
-                        [file_type.strip() for file_type in file_types.split(",")]
+                        file_type.strip() for file_type in file_types.split(",")
                     )
                 else:
                     file_types = tuple(file_types)
@@ -316,37 +314,64 @@ class Zot:
         )
         unlinked_file_removal_directory.mkdir()
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
-        unlinked_files_removal_map = {}
+        files_removal_map = {}
         for unlinked_file_path in unlinked_file_paths:
             unlinked_file_path_new = (
                 unlinked_file_removal_directory / unlinked_file_path.name
             )
-            unlinked_files_removal_map.update(
+            files_removal_map.update(
                 {str(unlinked_file_path_new): str(unlinked_file_path)}
             )
             unlinked_file_path.rename(unlinked_file_path_new)
-        unlinked_files_removal_map_path = (
-            unlinked_file_removal_directory / "_unlinked_files_removal_map.json"
+        files_removal_map_path = (
+            unlinked_file_removal_directory / "_files_removal_map.json"
         )
-        with open(unlinked_files_removal_map_path, "w") as fh:
-            json.dump(unlinked_files_removal_map, fh, indent=4)
+        with open(files_removal_map_path, "w") as fh:
+            json.dump(files_removal_map, fh, indent=4)
 
         # Delete the unlinked files
-        if delete:
-            for path in map(lambda x: Path(x), unlinked_files_removal_map.keys()):
-                # path.unlink(missing_ok=True) in Python 3.8
-                try:
-                    path.unlink()
-                except:
-                    pass
-            # unlinked_files_removal_map_path.unlink(missing_ok=True) in Python 3.8
+        if deletion:
+            self.delete_files(files_removal_map)
+
+    def delete_files(self, files_removal_maps=None):
+        """Delete the removed files by their removal map.
+
+        Parameters
+        ----------
+        files_removal_maps : dict or Iterable(dict), optional
+            Files removal map for deletion.
+            Warning! If not specified, all the removed files will be deleted
+
+        TODO: add an option to specify `files_removal_map_paths`, consider recursive.
+
+        """
+        if files_removal_maps:
+            # ugly and unreliable workaround to separate a single dict and a generator, revision needed
             try:
-                unlinked_files_removal_map_path.unlink()
+                files_removal_maps = (files_removal_maps,)
+            except:
+                files_removal_maps = tuple(files_removal_maps)
+        else:
+            files_removal_maps = self.retrieve_files_removal_maps()
+
+        for files_removal_map in files_removal_maps:
+            files_removal_map_path = None
+            for path in map(lambda x: Path(x), files_removal_map.keys()):
+                # path.unlink(missing_ok=True) in Python 3.8
+                if path.is_file():
+                    path.unlink()
+                    if files_removal_map_path is None:
+                        files_removal_map_path = path.parent / "_files_removal_map.json"
+                else:
+                    pass
+            try:
+                files_removal_map_path.unlink()
             except:
                 pass
 
-    def delete_unlinked_files(self):
+    def recover_unlinked_files(self):
         pass
 
-    def recover_unlinked_files(self):
+    @staticmethod
+    def delete_empty_directories():
         pass
