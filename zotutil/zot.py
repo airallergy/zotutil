@@ -8,12 +8,12 @@ from zipfile import ZipFile
 from io import TextIOWrapper
 import json
 
-_ZOT_INSTALLATION_PATHS_PARTS = {
+_ZOT_DEFAULT_INSTALLATION_PATHS_PARTS = {
     "darwin": ("/", "Applications", "Zotero.app", "Contents", "Resources"),
     "win32": ("C:\\", "Program Files (x86)", "Zotero"),
 }
 
-_ZOT_PROFILE_RELATIVE_PATHS_PARTS = {
+_ZOT_DEFAULT_PROFILE_RELATIVE_PATHS_PARTS = {
     "darwin": ("Library", "Application Support", "Zotero"),
     "win32": ("AppData", "Roaming", "Zotero", "Zotero"),
 }
@@ -42,29 +42,45 @@ class Zot:
         self._library_type = library_type
         self._api_key = api_key
         self._locale = locale
-        self._installation_directory = self._get_installation_directory()
-        self._profile_directory = self._get_profile_directory()
-        self._get_library()
+        self._installation_directory = self._retrieve_default_installation_directory()
+        self._profile_directory = self._retrieve_default_profile_directory()
+        self._retrieve_data_directory()
+        self._retrieve_attachment_base_directory()
+        self._retrieve_library()
 
-    def _get_library(self):
+    def _retrieve_library(self):
         self._library = Zotero(
             self._library_id, self._library_type, self._api_key, self._locale
         )
 
     @staticmethod
-    def _get_installation_directory():
-        return Path(*_ZOT_INSTALLATION_PATHS_PARTS[sys.platform])
+    def _retrieve_default_installation_directory():
+        return Path(*_ZOT_DEFAULT_INSTALLATION_PATHS_PARTS[sys.platform])
 
     @staticmethod
-    def _get_profile_directory():
+    def _retrieve_default_profile_directory():
         # Windows >= Vista, https://www.zotero.org/support/kb/profile_directory#profile_directory_location
-        return Path.home().joinpath(*_ZOT_PROFILE_RELATIVE_PATHS_PARTS[sys.platform])
+        return Path.home().joinpath(
+            *_ZOT_DEFAULT_PROFILE_RELATIVE_PATHS_PARTS[sys.platform]
+        )
 
-    def _get_data_directory(self):
+    def _retrieve_data_directory(self):
         # https://www.zotero.org/support/zotero_data#default_locations
-        return Path(self._get_preference("extensions.zotero.dataDir"))
+        self._data_directory = Path(
+            self._retrieve_preference("extensions.zotero.dataDir")
+        )
 
-    def _get_preference_path(self, preference_type="user", preference_owner=None):
+    def _retrieve_attachment_base_directory(self):
+        try:
+            self._attachment_base_directory = Path(
+                self._retrieve_preference("extensions.zotfile.dest_dir")
+            )
+        except:
+            self._attachment_base_directory = Path(
+                self._retrieve_preference("extensions.zotero.baseAttachmentPath")
+            )
+
+    def _retrieve_preference_path(self, preference_type="user", preference_owner=None):
         """Retrieve the preference file path.
 
         Parameters
@@ -123,7 +139,7 @@ class Zot:
         else:
             raise ValueError("invalid preference type: " + str(preference_type))
 
-    def _get_preference(
+    def _retrieve_preference(
         self, preference_key, preference_type="user", preference_owner=None
     ):
         """Retrieve the preference file path.
@@ -149,7 +165,7 @@ class Zot:
         """
         re_pattern = '(?<=pref\("' + preference_key + '", ").*(?="\);)'
         if preference_type == "default" and (not preference_owner == "zotero"):
-            plugin_xpi_path, preference_path_in_xpi = self._get_preference_path(
+            plugin_xpi_path, preference_path_in_xpi = self._retrieve_preference_path(
                 preference_type, preference_owner
             )
             # ZipFile.open() needs TextIOWrapper to read as text
@@ -158,49 +174,42 @@ class Zot:
             ) as fh:
                 preferences = fh.read()
         else:
-            preference_path = self._get_preference_path(
+            preference_path = self._retrieve_preference_path(
                 preference_type, preference_owner
             )
-            with preference_path.open("r") as fh:
+            with preference_path.open("rt") as fh:
                 preferences = fh.read()
         try:
             return re.search(re_pattern, preferences).group(0)
         except:
             raise ValueError("no preference infomation found")
 
-    # def get_entries(self, **kwargs):
+    # def retrieve_entries(self, **kwargs):
     #     if "limit" in kwargs:
     #         entries = self._library.top(**kwargs)
     #     else:
     #         entries = self._library.everything(self.__library.top(**kwargs))
     #     return entries
 
-    def set_directory(
-        self,
-        zot_installation_directory=None,
-        zot_profile_directory=None,
-        zot_data_directory=None,
-    ):
+    def set_directory(self, installation_directory=None, profile_directory=None):
         """Set user defined directories.
 
         Parameters
         ----------
-        zot_installation_directory : str
+        installation_directory : str
             User defined directory where Zotero is installed.
-        zot_profile_directory : str
+        profile_directory : str
             User defined directory where the Zotero profile is stored.
-        zot_data_directory : str
-            User defined directory where the Zotero local library data is stored.
 
         """
-        if zot_installation_directory:
-            self._installation_directory = Path(zot_installation_directory)
-        if zot_profile_directory:
-            self._profile_directory = Path(zot_profile_directory)
-        if zot_data_directory:
-            self._data_directory = Path(zot_data_directory)
+        if installation_directory:
+            self._installation_directory = Path(installation_directory)
+        if profile_directory:
+            self._profile_directory = Path(profile_directory)
+            self._retrieve_data_directory()
+            self._retrieve_attachment_base_directory()
 
-    def get_attachment_relative_paths(self, **kwargs):
+    def retrieve_attachment_relative_paths(self, **kwargs):
         attachment_entries = self._library.everything(
             self._library.items(itemType="attachment", **kwargs)
         )
@@ -233,24 +242,17 @@ class Zot:
 
         """
         # Retrieve the attachment paths
-        attachment_relative_paths = self.get_attachment_relative_paths()
-        attachment_base_directory = Path(
-            self._get_preference(
-                "extensions.zotfile.dest_dir"
-                if zotfile
-                else "extensions.zotero.baseAttachmentPath"
-            )
-        )
+        attachment_relative_paths = self.retrieve_attachment_relative_paths()
         attachment_paths = [
-            attachment_base_directory / path for path in attachment_relative_paths
+            self._attachment_base_directory / path for path in attachment_relative_paths
         ]
 
         # Retrieve the file types
         if zotfile:
             try:
-                file_types = self._get_preference("extensions.zotfile.filetypes")
+                file_types = self._retrieve_preference("extensions.zotfile.filetypes")
             except:
-                file_types = self._get_preference(
+                file_types = self._retrieve_preference(
                     "extensions.zotfile.filetypes",
                     preference_type="default",
                     preference_owner="zotfile",
@@ -274,12 +276,12 @@ class Zot:
         # Remove the unlinked files to a designated directory with a map to their orginal paths
         file_relative_paths = [
             path
-            for path in attachment_base_directory.glob("**/*")
+            for path in self._attachment_base_directory.glob("**/*")
             if path.is_file()
             and (path.suffix.strip(".") in file_types)
             and (not path.parts[-2].startswith("_unlinked_files"))
         ]
-        unlinked_file_removal_directory = attachment_base_directory / "_".join(
+        unlinked_file_removal_directory = self._attachment_base_directory / "_".join(
             ["_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S")]
         )
         unlinked_file_removal_directory.mkdir()
@@ -293,7 +295,8 @@ class Zot:
                 {str(unlinked_file_path_new): str(unlinked_file_path)}
             )
             unlinked_file_path.rename(unlinked_file_path_new)
-        with open(
-            unlinked_file_removal_directory / "_unlinked_files_removal_map.json", "w"
-        ) as fh:
+        unlinked_files_removal_map_path = (
+            unlinked_file_removal_directory / "_unlinked_files_removal_map.json"
+        )
+        with open(unlinked_files_removal_map_path, "w") as fh:
             json.dump(unlinked_files_removal_map, fh, indent=4)
