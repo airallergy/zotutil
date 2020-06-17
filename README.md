@@ -5,8 +5,8 @@ This is a repository of utilities to assist the use of [Zotero](https://www.zote
 ## Utilities
 
 - **Unlinked Files Removal** (In Progress)
-
-    └ Removal, Deletion, Recovery
+  - Removal, Deletion, Recovery
+  - Empty Dirrectory Deletion
 
     This is to resolve situations when attachment files are left behind whilst their formerly linked entries have been deleted from the Zotero library. This happens when the [Linked Files](https://www.zotero.org/support/attaching_files#stored_files_and_linked_files) is used, most likely together with [ZotFile](https://github.com/jlegewie/zotfile).
 
