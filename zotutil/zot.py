@@ -300,3 +300,20 @@ class Zot:
         )
         with open(unlinked_files_removal_map_path, "w") as fh:
             json.dump(unlinked_files_removal_map, fh, indent=4)
+
+        # Delete the unlinked files
+        if delete:
+            for path in map(lambda x: Path(x), unlinked_files_removal_map.keys()):
+                # path.unlink(missing_ok=True) in Python 3.8
+                try:
+                    path.unlink()
+                except:
+                    pass
+            # unlinked_files_removal_map_path.unlink(missing_ok=True) in Python 3.8
+            try:
+                unlinked_files_removal_map_path.unlink()
+            except:
+                pass
+
+    def recover_unlinked_files(self):
+        pass
