@@ -225,6 +225,21 @@ class Zot:
             attachment_relative_paths.append(attachment_relative_path)
         return attachment_relative_paths
 
+    def retrieve_unlinked_files_maps(self):
+        """Retrieve all unlinked files maps generated in the removal.
+
+        Yields
+        ----------
+        out : generator
+            A generator of all maps derived from different removed filed directories.
+
+        """
+        for unlinked_files_removal_map_path in self._attachment_base_directory.glob(
+            "**/_unlinked_files_removal_map.json"
+        ):
+            with unlinked_files_removal_map_path.open("rt") as fh:
+                yield json.load(fh)
+
     def remove_unlinked_files(self, zotfile=True, delete=False, file_types=None):
         """Remove unlinked files from the Zotero attachment directory.
 
