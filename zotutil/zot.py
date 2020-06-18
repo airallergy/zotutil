@@ -20,7 +20,7 @@ _ZOT_DEFAULT_PROFILE_RELATIVE_PATHS_PARTS = {
 
 
 class Zot:
-    """Create a Zotero library object.
+    """A Zotero library object.
     Default directories:
         installation directory:
             Mac: /Applications/Zotero.app/Contents/Resources
@@ -53,7 +53,7 @@ class Zot:
         self._installation_directory = self._retrieve_default_installation_directory()
         self._profile_directory = self._retrieve_default_profile_directory()
         self._retrieve_data_directory()
-        self._retrieve_attachment_base_directory()
+        self._retrieve_attachment_root_directory()
         self._retrieve_library()
 
     def _retrieve_library(self):
@@ -77,13 +77,13 @@ class Zot:
             self._retrieve_preference("extensions.zotero.dataDir")
         )
 
-    def _retrieve_attachment_base_directory(self):
+    def _retrieve_attachment_root_directory(self):
         try:
-            self._attachment_base_directory = Path(
+            self._attachment_root_directory = Path(
                 self._retrieve_preference("extensions.zotfile.dest_dir")
             )
         except:
-            self._attachment_base_directory = Path(
+            self._attachment_root_directory = Path(
                 self._retrieve_preference("extensions.zotero.baseAttachmentPath")
             )
 
@@ -130,7 +130,7 @@ class Zot:
                 profile_config = ConfigParser()
                 profile_config.read(self._profile_directory / "profiles.ini")
                 try:
-                    extension_xpi_path = list(
+                    plugin_xpi_path = list(
                         (
                             self._profile_directory
                             / profile_config["Profile0"]["Path"]
@@ -142,7 +142,7 @@ class Zot:
                 except:
                     raise ValueError("no preference owner found")
                 return (
-                    ZipFile(extension_xpi_path),
+                    ZipFile(plugin_xpi_path),
                     PurePath("defaults", "preferences", "defaults.js"),
                 )
         else:
@@ -209,22 +209,22 @@ class Zot:
         return self._profile_directory
 
     @installation_directory.setter
-    def installation_directory(self, installation_directory_str):
-        installation_directory = Path(installation_directory_str)
+    def installation_directory(self, installation_directory):
+        installation_directory = Path(installation_directory)
         if installation_directory.is_dir():
             self._installation_directory = installation_directory
         else:
-            raise ValueError("invalid directory: " + installation_directory_str)
+            raise ValueError("invalid directory: " + installation_directory)
 
     @profile_directory.setter
-    def profile_directory(self, profile_directory_str):
-        profile_directory = Path(profile_directory_str)
+    def profile_directory(self, profile_directory):
+        profile_directory = Path(profile_directory)
         if profile_directory.is_dir():
             self._profile_directory = profile_directory
         else:
-            raise ValueError("invalid directory: " + profile_directory_str)
+            raise ValueError("invalid directory: " + profile_directory)
         self._retrieve_data_directory()
-        self._retrieve_attachment_base_directory()
+        self._retrieve_attachment_root_directory()
 
     def retrieve_attachment_relative_paths(self, **kwargs):
         attachment_entries = self._library.everything(
@@ -251,7 +251,7 @@ class Zot:
             A generator of all maps derived from different removed files directories.
 
         """
-        for files_removal_map_path in self._attachment_base_directory.glob(
+        for files_removal_map_path in self._attachment_root_directory.glob(
             "**/_files_removal_map.json"
         ):
             with files_removal_map_path.open("rt") as fh:
@@ -276,7 +276,7 @@ class Zot:
         # Retrieve the attachment paths
         attachment_relative_paths = self.retrieve_attachment_relative_paths()
         attachment_paths = tuple(
-            self._attachment_base_directory / path for path in attachment_relative_paths
+            self._attachment_root_directory / path for path in attachment_relative_paths
         )
 
         # Retrieve the file types
@@ -306,12 +306,12 @@ class Zot:
         # Remove the unlinked files to a designated directory with a map to their orginal paths
         file_relative_paths = tuple(
             item
-            for item in self._attachment_base_directory.glob("**/*")
+            for item in self._attachment_root_directory.glob("**/*")
             if item.is_file()
             and (item.suffix.strip(".") in file_types)
             and (not item.parts[-2].startswith("_unlinked_files"))
         )
-        unlinked_files_removal_directory = self._attachment_base_directory / "_".join(
+        unlinked_files_removal_directory = self._attachment_root_directory / "_".join(
             ("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S"))
         )
         unlinked_files_removal_directory.mkdir()
@@ -339,7 +339,7 @@ class Zot:
             self.delete_files(files_removal_map)
 
         # Detele the empty directories
-        self.delete_empty_directories(self._attachment_base_directory)
+        self.delete_empty_directories(self._attachment_root_directory)
 
     def delete_files(self, files_removal_maps=None):
         """Delete the removed files by their removal map.

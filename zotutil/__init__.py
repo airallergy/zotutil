@@ -1,10 +1,12 @@
 """
 Variable Naming Rules
 ---------------------
-path : file path as `pathlib.Path` object.
-directory : directory path as `pathlib.Path` object.
-item : uncertain file or directory path as `pathlib.Path` object.
-_str : file or directory path as `str` object.
-Exception : path or directory in method arguments can be string as well.
+Pattern:
+    path : file path as a `pathlib.Path` object.
+    directory : folder path as a `pathlib.Path` object.
+    item : uncertain file or folder path as a `pathlib.Path` object.
+
+Exception :
+    `path` or `directory` in function arguments can be a `str` object as well.
 
 """
