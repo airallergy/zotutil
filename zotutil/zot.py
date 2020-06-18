@@ -26,8 +26,8 @@ class Zot:
             Mac: /Applications/Zotero.app/Contents/Resources
             Windows 10/8/7/Vista: C:\\Program Files (x86)\\Zotero
         profile directory:
-            Mac: /Users/[username]/Library/Application Support/Zotero
-            Windows 10/8/7/Vista: C:\\Users\\[User Name]\\AppData\\Roaming\\Zotero\\Zotero
+            Mac: /Users/\<username\>/Library/Application Support/Zotero
+            Windows 10/8/7/Vista: C:\\Users\\\<User Name\>\\AppData\\Roaming\\Zotero\\Zotero
     they need to be specified if customised.
 
     Parameters
@@ -136,7 +136,9 @@ class Zot:
                             / profile_config["Profile0"]["Path"]
                             / "extensions"
                         ).glob(preference_owner.lower() + "*.xpi")
-                    )[0]
+                    )[
+                        0
+                    ]  # can there be duplicate plugin packages?
                 except:
                     raise ValueError("no preference owner found")
                 return (
@@ -238,7 +240,7 @@ class Zot:
                 # Attachments that are not managed by linked file
                 pass
             attachment_relative_paths.append(attachment_relative_path)
-        return attachment_relative_paths
+        return tuple(attachment_relative_paths)
 
     def retrieve_files_removal_maps(self):
         """Retrieve all unlinked files maps generated in the removal.
@@ -255,7 +257,7 @@ class Zot:
             with files_removal_map_path.open("rt") as fh:
                 yield json.load(fh)
 
-    def remove_unlinked_files(self, zotfile=True, deletion=False, file_types=None):
+    def remove_unlinked_files(self, zotfile=True, file_deletion=False, file_types=None):
         """Remove unlinked files from the Zotero attachment directory.
 
         Parameters
@@ -263,7 +265,7 @@ class Zot:
         zotfile : bool, optional
             Whether or not ZotFile is used to manage the attachment links,
             when True, any input for `file_types` will be ignored.
-        deletion : bool, optional
+        file_deletion : bool, optional
             Whether or not to delete the removed files.
         file_types : iterable or string, optional
             File types to inspect when `zotfile` is `False`,
@@ -273,9 +275,9 @@ class Zot:
         """
         # Retrieve the attachment paths
         attachment_relative_paths = self.retrieve_attachment_relative_paths()
-        attachment_paths = [
+        attachment_paths = tuple(
             self._attachment_base_directory / path for path in attachment_relative_paths
-        ]
+        )
 
         # Retrieve the file types
         if zotfile:
@@ -302,15 +304,15 @@ class Zot:
                 raise ValueError("invalid file types")
 
         # Remove the unlinked files to a designated directory with a map to their orginal paths
-        file_relative_paths = [
-            path
-            for path in self._attachment_base_directory.glob("**/*")
-            if path.is_file()
-            and (path.suffix.strip(".") in file_types)
-            and (not path.parts[-2].startswith("_unlinked_files"))
-        ]
+        file_relative_paths = tuple(
+            item
+            for item in self._attachment_base_directory.glob("**/*")
+            if item.is_file()
+            and (item.suffix.strip(".") in file_types)
+            and (not item.parts[-2].startswith("_unlinked_files"))
+        )
         unlinked_file_removal_directory = self._attachment_base_directory / "_".join(
-            ["_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S")]
+            ("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S"))
         )
         unlinked_file_removal_directory.mkdir()
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
@@ -330,8 +332,11 @@ class Zot:
             json.dump(files_removal_map, fh, indent=4)
 
         # Delete the unlinked files
-        if deletion:
+        if file_deletion:
             self.delete_files(files_removal_map)
+
+        # Detele the empty directories
+        self.delete_empty_directories(self._attachment_base_directory)
 
     def delete_files(self, files_removal_maps=None):
         """Delete the removed files by their removal map.
@@ -372,6 +377,22 @@ class Zot:
     def recover_unlinked_files(self):
         pass
 
+    def delete_empty_directories(self, root_directory):
+        # might be put outside the class to facilitate direct calling
+        root_directory = Path(root_directory)
+        if sys.platform == "darwin":
+            self.delete_ds_store(root_directory)
+        for directory in tuple(
+            item for item in root_directory.iterdir() if item.is_dir()
+        ):
+            if len(list(directory.glob("*"))) == 0:
+                directory.rmdir()
+            else:
+                self.delete_empty_directories(directory)
+
     @staticmethod
-    def delete_empty_directories():
-        pass
+    def delete_ds_store(root_directory):
+        # might be put outside the class to facilitate direct calling
+        root_directory = Path(root_directory)
+        for path in root_directory.glob("**/.DS_Store"):
+            path.unlink()
