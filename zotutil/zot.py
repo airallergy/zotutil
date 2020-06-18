@@ -311,25 +311,28 @@ class Zot:
             and (item.suffix.strip(".") in file_types)
             and (not item.parts[-2].startswith("_unlinked_files"))
         )
-        unlinked_file_removal_directory = self._attachment_base_directory / "_".join(
+        unlinked_files_removal_directory = self._attachment_base_directory / "_".join(
             ("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S"))
         )
-        unlinked_file_removal_directory.mkdir()
+        unlinked_files_removal_directory.mkdir()
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
         files_removal_map = {}
         for unlinked_file_path in unlinked_file_paths:
             unlinked_file_path_new = (
-                unlinked_file_removal_directory / unlinked_file_path.name
+                unlinked_files_removal_directory / unlinked_file_path.name
             )
             files_removal_map.update(
                 {str(unlinked_file_path_new): str(unlinked_file_path)}
             )
             unlinked_file_path.rename(unlinked_file_path_new)
-        files_removal_map_path = (
-            unlinked_file_removal_directory / "_files_removal_map.json"
-        )
-        with open(files_removal_map_path, "w") as fh:
-            json.dump(files_removal_map, fh, indent=4)
+        if files_removal_map:
+            files_removal_map_path = (
+                unlinked_files_removal_directory / "_files_removal_map.json"
+            )
+            with open(files_removal_map_path, "w") as fh:
+                json.dump(files_removal_map, fh, indent=4)
+        else:
+            self.delete_empty_directories(unlinked_files_removal_directory)
 
         # Delete the unlinked files
         if file_deletion:
