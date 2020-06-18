@@ -242,31 +242,33 @@ class Zot:
             attachment_relative_paths.append(attachment_relative_path)
         return tuple(attachment_relative_paths)
 
-    def retrieve_files_removal_maps(self):
-        """Retrieve all unlinked files maps generated in the removal.
+    def retrieve_files_relocation_maps(self):
+        """Retrieve all path maps generated in the unlinked files relocation.
 
         Yields
         ----------
         out : generator
-            A generator of all maps derived from different removed files directories.
+            A generator of all maps derived from different relocated files directories.
 
         """
-        for files_removal_map_path in self._attachment_root_directory.glob(
-            "**/_files_removal_map.json"
+        for files_relocation_map_path in self._attachment_root_directory.glob(
+            "**/_files_relocation_map.json"
         ):
-            with files_removal_map_path.open("rt") as fh:
+            with files_relocation_map_path.open("rt") as fh:
                 yield json.load(fh)
 
-    def remove_unlinked_files(self, zotfile=True, file_deletion=False, file_types=None):
-        """Remove unlinked files from the Zotero attachment directory.
+    def relocate_unlinked_files(
+        self, zotfile=True, file_removal=False, file_types=None
+    ):
+        """Relocate unlinked files from the Zotero attachment directory.
 
         Parameters
         ----------
         zotfile : bool, optional
             Whether or not ZotFile is used to manage the attachment links,
             when True, any input for `file_types` will be ignored.
-        file_deletion : bool, optional
-            Whether or not to delete the removed files.
+        file_removal : bool, optional
+            Whether or not to remove the relocated files.
         file_types : iterable or string, optional
             File types to inspect when `zotfile` is `False`,
             e.g. ["pdf", "doc"], ("docx", "txt"), numpy.array(["rtf", "djvu"]), etc.
@@ -303,7 +305,7 @@ class Zot:
             except:
                 raise ValueError("invalid file types")
 
-        # Remove the unlinked files to a designated directory with a map to their orginal paths
+        # Relocate the unlinked files to a designated directory with a map to their orginal paths
         file_relative_paths = tuple(
             item
             for item in self._attachment_root_directory.glob("**/*")
@@ -311,90 +313,93 @@ class Zot:
             and (item.suffix.strip(".") in file_types)
             and (not item.parts[-2].startswith("_unlinked_files"))
         )
-        unlinked_files_removal_directory = self._attachment_root_directory / "_".join(
-            ("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S"))
+        unlinked_files_relocation_directory = (
+            self._attachment_root_directory
+            / "_".join(("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S")))
         )
-        unlinked_files_removal_directory.mkdir()
+        unlinked_files_relocation_directory.mkdir()
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
-        files_removal_map = {}
+        files_relocation_map = {}
         for unlinked_file_path in unlinked_file_paths:
             unlinked_file_path_new = (
-                unlinked_files_removal_directory / unlinked_file_path.name
+                unlinked_files_relocation_directory / unlinked_file_path.name
             )
-            files_removal_map.update(
+            files_relocation_map.update(
                 {str(unlinked_file_path_new): str(unlinked_file_path)}
             )
             unlinked_file_path.rename(unlinked_file_path_new)
-        if files_removal_map:
-            files_removal_map_path = (
-                unlinked_files_removal_directory / "_files_removal_map.json"
+        if files_relocation_map:
+            files_relocation_map_path = (
+                unlinked_files_relocation_directory / "_files_relocation_map.json"
             )
-            with open(files_removal_map_path, "w") as fh:
-                json.dump(files_removal_map, fh, indent=4)
+            with open(files_relocation_map_path, "w") as fh:
+                json.dump(files_relocation_map, fh, indent=4)
         else:
-            self.delete_empty_directories(unlinked_files_removal_directory)
+            self.remove_empty_directories(unlinked_files_relocation_directory)
 
-        # Delete the unlinked files
-        if file_deletion:
-            self.delete_files(files_removal_map)
+        # Remove the unlinked files
+        if file_removal:
+            self.remove_files(files_relocation_map)
 
-        # Detele the empty directories
-        self.delete_empty_directories(self._attachment_root_directory)
+        # Remove the empty directories
+        self.remove_empty_directories(self._attachment_root_directory)
 
-    def delete_files(self, files_removal_maps=None):
-        """Delete the removed files by their removal map.
+    def remove_files(self, files_relocation_maps=None):
+        """Remove the relocated files by their relocation map.
 
         Parameters
         ----------
-        files_removal_maps : dict or Iterable(dict), optional
-            Files removal map for deletion.
-            Warning! If not specified, all the removed files will be deleted
+        files_relocation_maps : dict or Iterable(dict), optional
+            Files relocation map for removal.
+            Warning! If not specified, all the relocated files will be removed
 
-        TODO: add an option to specify `files_removal_map_paths`, consider recursive.
+        TODO: add an option to specify `files_relocation_map_paths`, consider recursive.
 
         """
-        if files_removal_maps:
+        if files_relocation_maps:
             # ugly and unreliable workaround to separate a single dict and a generator, revision needed
             try:
-                files_removal_maps = (files_removal_maps,)
+                files_relocation_maps = (files_relocation_maps,)
             except:
-                files_removal_maps = tuple(files_removal_maps)
+                files_relocation_maps = tuple(files_relocation_maps)
         else:
-            files_removal_maps = self.retrieve_files_removal_maps()
+            files_relocation_maps = self.retrieve_files_relocation_maps()
 
-        for files_removal_map in files_removal_maps:
-            files_removal_map_path = None
-            for path in map(lambda x: Path(x), files_removal_map.keys()):
+        for files_relocation_map in files_relocation_maps:
+            files_relocation_map_path = None
+            for path in map(lambda x: Path(x), files_relocation_map.keys()):
                 # path.unlink(missing_ok=True) in Python 3.8
                 if path.is_file():
                     path.unlink()
-                    if files_removal_map_path is None:
-                        files_removal_map_path = path.parent / "_files_removal_map.json"
+                    if files_relocation_map_path is None:
+                        files_relocation_map_path = (
+                            path.parent / "_files_relocation_map.json"
+                        )
                 else:
                     pass
             try:
-                files_removal_map_path.unlink()
+                files_relocation_map_path.unlink()
             except:
                 pass
 
-    def recover_unlinked_files(self):
+    def restore_unlinked_files(self):
         pass
 
-    def delete_empty_directories(self, root_directory):
+    def remove_empty_directories(self, root_directory):
         # might be put outside the class to facilitate direct calling
         root_directory = Path(root_directory)
         if sys.platform == "darwin":
-            self.delete_ds_store(root_directory)
+            self.remove_ds_store(root_directory)
         for directory in tuple(
             item for item in root_directory.iterdir() if item.is_dir()
         ):
             if len(list(directory.glob("*"))) == 0:
                 directory.rmdir()
             else:
-                self.delete_empty_directories(directory)
+                self.remove_empty_directories(directory)
 
     @staticmethod
-    def delete_ds_store(root_directory):
+    def remove_ds_store(root_directory):
         # might be put outside the class to facilitate direct calling
         root_directory = Path(root_directory)
         for path in root_directory.glob("**/.DS_Store"):
