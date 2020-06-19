@@ -8,6 +8,8 @@ from zipfile import ZipFile
 from io import TextIOWrapper
 import json
 
+from .tools import remove_empty_directories
+
 _ZOT_DEFAULT_INSTALLATION_PATHS_PARTS = {
     "darwin": ("/", "Applications", "Zotero.app", "Contents", "Resources"),
     "win32": ("C:\\", "Program Files (x86)", "Zotero"),
@@ -335,16 +337,16 @@ class Zot:
             with open(files_relocation_map_path, "w") as fh:
                 json.dump(files_relocation_map, fh, indent=4)
         else:
-            self.remove_empty_directories(unlinked_files_relocation_directory)
+            remove_empty_directories(unlinked_files_relocation_directory)
 
         # Remove the unlinked files
         if file_removal:
-            self.remove_files(files_relocation_map)
+            self.remove_unlinked_files(files_relocation_map)
 
         # Remove the empty directories
-        self.remove_empty_directories(self._attachment_root_directory)
+        remove_empty_directories(self._attachment_root_directory)
 
-    def remove_files(self, files_relocation_maps=None):
+    def remove_unlinked_files(self, files_relocation_maps=None):
         """Remove the relocated files by their relocation map.
 
         Parameters
@@ -385,22 +387,3 @@ class Zot:
     def restore_unlinked_files(self):
         pass
 
-    def remove_empty_directories(self, root_directory):
-        # might be put outside the class to facilitate direct calling
-        root_directory = Path(root_directory)
-        if sys.platform == "darwin":
-            self.remove_ds_store(root_directory)
-        for directory in tuple(
-            item for item in root_directory.iterdir() if item.is_dir()
-        ):
-            if len(list(directory.glob("*"))) == 0:
-                directory.rmdir()
-            else:
-                self.remove_empty_directories(directory)
-
-    @staticmethod
-    def remove_ds_store(root_directory):
-        # might be put outside the class to facilitate direct calling
-        root_directory = Path(root_directory)
-        for path in root_directory.glob("**/.DS_Store"):
-            path.unlink()
