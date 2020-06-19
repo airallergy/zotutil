@@ -15,8 +15,7 @@ This is a repository of utilities to assist the use of [Zotero](https://www.zote
     ```bash
     clean unlinked files
     ├── relocate unlinked files
-    │   ├── remove unlinked files
-    │   └── remove empty directories
+    ├── remove unlinked files
     └── restore unlinked files
     ```
 
