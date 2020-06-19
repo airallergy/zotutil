@@ -240,11 +240,11 @@ class Zot:
                 )
             except:
                 # Attachments that are not managed by linked file
-                pass
+                continue
             attachment_relative_paths.append(attachment_relative_path)
         return tuple(attachment_relative_paths)
 
-    def retrieve_files_relocation_maps(self):
+    def retrieve_unlinked_files_relocation_maps(self):
         """Retrieve all path maps generated in the unlinked files relocation.
 
         Yields
@@ -253,13 +253,15 @@ class Zot:
             A generator of all maps derived from different relocated files directories.
 
         """
-        for files_relocation_map_path in self._attachment_root_directory.glob(
-            "**/_files_relocation_map.json"
+        for relocation_map_path in self._attachment_root_directory.glob(
+            "**/_relocation_map.json"
         ):
-            with files_relocation_map_path.open("rt") as fh:
+            with relocation_map_path.open("rt") as fh:
                 yield json.load(fh)
 
-    def relocate_unlinked_files(self, zotfile=True, file_types=None):
+    def relocate_unlinked_files(
+        self, zotfile=True, file_types=None, foldername_suffix=None
+    ):
         """Relocate unlinked files from the Zotero attachment directory.
 
         Parameters
@@ -271,6 +273,9 @@ class Zot:
             File types to inspect when `zotfile` is `False`,
             e.g. ["pdf", "doc"], ("docx", "txt"), numpy.array(["rtf", "djvu"]), etc.
             e.g. "pdf, doc, docx, txt, rtf, djvu"
+        foldername_suffix : str, optional
+            Suffix to "_unlinked_files" as the relocation folder name,
+            e.g. a timestamp `dt.datetime.now().strftime("%Y%m%d%H%M%S")`
 
         """
         # Retrieve the attachment paths
@@ -304,6 +309,15 @@ class Zot:
                 raise ValueError("invalid file types")
 
         # Relocate the unlinked files to a designated directory with a map to their orginal paths
+        relocation_foldername_parts = ["_unlinked_files"]
+        if foldername_suffix:
+            relocation_foldername_parts.append(foldername_suffix)
+        relocation_directory = self._attachment_root_directory / "_".join(
+            relocation_foldername_parts
+        )
+        if not relocation_directory.is_dir():
+            relocation_directory.mkdir()
+
         file_relative_paths = tuple(
             item
             for item in self._attachment_root_directory.glob("**/*")
@@ -311,29 +325,26 @@ class Zot:
             and (item.suffix.strip(".") in file_types)
             and (not item.parts[-2].startswith("_unlinked_files"))
         )
-        unlinked_files_relocation_directory = (
-            self._attachment_root_directory
-            / "_".join(("_unlinked_files", dt.datetime.now().strftime("%Y%m%d%H%M%S")))
-        )
-        unlinked_files_relocation_directory.mkdir()
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
-        files_relocation_map = {}
+        relocation_map = {}
         for unlinked_file_path in unlinked_file_paths:
             unlinked_file_relocated_path = (
-                unlinked_files_relocation_directory / unlinked_file_path.name
+                relocation_directory / unlinked_file_path.name
             )
-            files_relocation_map.update(
+            relocation_map.update(
                 {str(unlinked_file_relocated_path): str(unlinked_file_path)}
             )
             unlinked_file_path.rename(unlinked_file_relocated_path)
-        if files_relocation_map:
-            files_relocation_map_path = (
-                unlinked_files_relocation_directory / "_files_relocation_map.json"
-            )
-            with open(files_relocation_map_path, "w") as fh:
-                json.dump(files_relocation_map, fh, indent=4)
+        if relocation_map:
+            self.unlinked_files_relocation_map = relocation_map
+            relocation_map_path = relocation_directory / "_relocation_map.json"
+            if relocation_map_path.is_file():
+                with relocation_map_path.open("rt") as fh:
+                    relocation_map = dict(json.load(fh), **relocation_map)
+            with open(relocation_map_path, "wt") as fh:
+                json.dump(relocation_map, fh, indent=4)
         else:
-            remove_empty_directories(unlinked_files_relocation_directory)
+            remove_empty_directories(relocation_directory)
 
         # Remove the empty directories
         remove_empty_directories(self._attachment_root_directory)
@@ -342,44 +353,42 @@ class Zot:
         self,
         unrelocated_unlinked_files=True,
         relocated_unlinked_files=True,
-        files_relocation_maps=None,
+        relocation_maps=None,
     ):
         """Remove the linked files by the given criterion, all are removed by default.
 
         Parameters
         ----------
-        files_relocation_maps : dict or ierable(dict), optional
+        relocation_maps : dict or ierable(dict), optional
             Files relocation map for removal.
             Warning! If not specified, all the relocated files will be removed
 
-        TODO: add an option to specify `files_relocation_map_paths`, consider recursive.
+        TODO: add an option to specify `relocation_map_paths`, consider recursive.
 
         """
-        if files_relocation_maps:
+        if relocation_maps:
             # ugly and unreliable workaround to separate a single dict and a generator, revision needed
             try:
-                files_relocation_maps = (files_relocation_maps,)
+                relocation_maps = (relocation_maps,)
             except:
-                files_relocation_maps = tuple(files_relocation_maps)
+                relocation_maps = tuple(relocation_maps)
         else:
-            files_relocation_maps = self.retrieve_files_relocation_maps()
+            relocation_maps = self.retrieve_unlinked_files_relocation_maps()
 
-        for files_relocation_map in files_relocation_maps:
-            files_relocation_map_path = None
-            for path in map(lambda x: Path(x), files_relocation_map.keys()):
+        for relocation_map in relocation_maps:
+            relocation_map_path = None
+            for path in map(lambda x: Path(x), relocation_map.keys()):
                 # path.unlink(missing_ok=True) in Python 3.8
                 if path.is_file():
                     path.unlink()
-                    if files_relocation_map_path is None:
-                        files_relocation_map_path = (
-                            path.parent / "_files_relocation_map.json"
-                        )
+                    if relocation_map_path is None:
+                        relocation_map_path = path.parent / "_relocation_map.json"
                 else:
-                    pass
+                    continue
             try:
-                files_relocation_map_path.unlink()
+                relocation_map_path.unlink()
             except:
-                pass
+                continue
 
     def restore_unlinked_files(self):
         pass
