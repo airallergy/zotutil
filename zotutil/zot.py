@@ -259,9 +259,7 @@ class Zot:
             with files_relocation_map_path.open("rt") as fh:
                 yield json.load(fh)
 
-    def relocate_unlinked_files(
-        self, zotfile=True, file_removal=False, file_types=None
-    ):
+    def relocate_unlinked_files(self, zotfile=True, file_types=None):
         """Relocate unlinked files from the Zotero attachment directory.
 
         Parameters
@@ -269,8 +267,6 @@ class Zot:
         zotfile : bool, optional
             Whether or not ZotFile is used to manage the attachment links,
             when True, any input for `file_types` will be ignored.
-        file_removal : bool, optional
-            Whether or not to remove the relocated files.
         file_types : iterable or string, optional
             File types to inspect when `zotfile` is `False`,
             e.g. ["pdf", "doc"], ("docx", "txt"), numpy.array(["rtf", "djvu"]), etc.
@@ -323,13 +319,13 @@ class Zot:
         unlinked_file_paths = set(file_relative_paths) - set(attachment_paths)
         files_relocation_map = {}
         for unlinked_file_path in unlinked_file_paths:
-            unlinked_file_path_new = (
+            unlinked_file_relocated_path = (
                 unlinked_files_relocation_directory / unlinked_file_path.name
             )
             files_relocation_map.update(
-                {str(unlinked_file_path_new): str(unlinked_file_path)}
+                {str(unlinked_file_relocated_path): str(unlinked_file_path)}
             )
-            unlinked_file_path.rename(unlinked_file_path_new)
+            unlinked_file_path.rename(unlinked_file_relocated_path)
         if files_relocation_map:
             files_relocation_map_path = (
                 unlinked_files_relocation_directory / "_files_relocation_map.json"
@@ -339,19 +335,20 @@ class Zot:
         else:
             remove_empty_directories(unlinked_files_relocation_directory)
 
-        # Remove the unlinked files
-        if file_removal:
-            self.remove_unlinked_files(files_relocation_map)
-
         # Remove the empty directories
         remove_empty_directories(self._attachment_root_directory)
 
-    def remove_unlinked_files(self, files_relocation_maps=None):
-        """Remove the relocated files by their relocation map.
+    def remove_unlinked_files(
+        self,
+        unrelocated_unlinked_files=True,
+        relocated_unlinked_files=True,
+        files_relocation_maps=None,
+    ):
+        """Remove the linked files by the given criterion, all are removed by default.
 
         Parameters
         ----------
-        files_relocation_maps : dict or Iterable(dict), optional
+        files_relocation_maps : dict or ierable(dict), optional
             Files relocation map for removal.
             Warning! If not specified, all the relocated files will be removed
 
