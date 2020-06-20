@@ -150,21 +150,15 @@ class Zot:
         else:
             raise ValueError("invalid preference type: " + str(preference_type))
 
-    def _retrieve_preference(
-        self, preference_key, preference_type="user", preference_owner=None
-    ):
+    def _retrieve_preference(self, preference_key, **kargs):
         """Retrieve the preference file path.
 
         Parameters
         ----------
         preference_key : str
             Key to requested preference defined by Zotero.
-        preference_type : str, optional
-            "user" or "default",
-            when "user" is input, any input for `preference_owner` will be ignored.
-        preference_owner : str, optional
-            The name of Zotero or its plugins whose preference is being retrieved,
-            e.g. "zotero", "zotfile", etc.
+        **kargs:
+            Parameters for `self._retrieve_preference_path`.
 
         Returns
         -------
@@ -172,15 +166,17 @@ class Zot:
             Preference information string.
 
         TODO: future revision for `zipfile` for Python 3.8 and above
-        TODO: **kargs for `self._retrieve_preference_path`
 
         """
+        preference_type = kargs.pop("preference_type", "user")
+        preference_owner = kargs.pop("preference_owner", None)
+
         re_pattern = '(?<=pref\("' + preference_key + '", ").*(?="\);)'
         if preference_type == "default" and (not preference_owner == "zotero"):
             plugin_xpi_path, preference_path_in_xpi = self._retrieve_preference_path(
                 preference_type, preference_owner
             )
-            # ZipFile.open() needs TextIOWrapper to read as text
+            # ZipFile.open() needs TextIOWrapper to read as text in the current Python verison, might be enhanced in the future
             with TextIOWrapper(
                 plugin_xpi_path.open(str(preference_path_in_xpi), "r"), encoding="utf-8"
             ) as fh:
