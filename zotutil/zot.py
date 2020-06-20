@@ -119,7 +119,7 @@ class Zot:
                 / "prefs.js"
             )
         elif preference_type.lower() == "default":
-            if preference_owner is None:
+            if not preference_owner:
                 raise ValueError("preference owner undefined")
             elif preference_owner.lower() == "zotero":
                 return (
@@ -172,6 +172,7 @@ class Zot:
             Preference information string.
 
         TODO: future revision for `zipfile` for Python 3.8 and above
+        TODO: **kargs for `self._retrieve_preference_path`
 
         """
         re_pattern = '(?<=pref\("' + preference_key + '", ").*(?="\);)'
@@ -244,18 +245,43 @@ class Zot:
             attachment_relative_paths.append(attachment_relative_path)
         return tuple(attachment_relative_paths)
 
-    def retrieve_unlinked_files_relocation_maps(self):
-        """Retrieve all path maps generated in the unlinked files relocation.
+    def retrieve_unlinked_files_relocation_maps(self, include=None, exclude=None):
+        """Retrieve the path maps generated in the unlinked files relocation.
+
+        Parameters
+        ----------
+        include : str or iterable(str), optional
+            Relocation foldernames to be included.
+        exclude : str or iterable(str), optional
+            Relocation foldernames to be excluded.
 
         Yields
         ----------
         out : generator
-            A generator of all maps derived from different relocated files directories.
+            A generator of maps derived from different relocated files directories.
 
         """
-        for relocation_map_path in self._attachment_root_directory.glob(
-            "**/_relocation_map.json"
-        ):
+        include = (include,) if isinstance(include, str) else include
+        exclude = (exclude,) if isinstance(exclude, str) else exclude
+        if include and exclude:
+            same_suffixes = set(include) & set(exclude)
+            if same_suffixes:
+                raise ValueError(
+                    ", ".join(same_suffixes) + " found in both 'include' and 'exclude'"
+                )
+        include = tuple(set(include)) if include else tuple()
+        exclude = tuple(set(exclude)) if exclude else tuple()
+
+        for relocation_map_path in [
+            path
+            for path in self._attachment_root_directory.glob("**/_relocation_map.json")
+            if path.parts[-2].startswith("_unlinked_files")
+            and (path.parents[1] == self._attachment_root_directory)
+        ]:
+            if (include and (relocation_map_path.parts[-2] not in include)) or (
+                exclude and (relocation_map_path.parts[-2] in exclude)
+            ):
+                continue
             with relocation_map_path.open("rt") as fh:
                 yield json.load(fh)
 
@@ -269,7 +295,7 @@ class Zot:
         zotfile : bool, optional
             Whether or not ZotFile is used to manage the attachment links,
             when True, any input for `file_types` will be ignored.
-        file_types : iterable or string, optional
+        file_types : str or iterable(str), optional
             File types to inspect when `zotfile` is `False`,
             e.g. ["pdf", "doc"], ("docx", "txt"), numpy.array(["rtf", "djvu"]), etc.
             e.g. "pdf, doc, docx, txt, rtf, djvu"
@@ -296,8 +322,8 @@ class Zot:
                 )
             file_types = tuple(file_type.strip() for file_type in file_types.split(","))
         else:
-            if file_types is None:
-                raise ValueError("no file types specified")
+            if not file_types:
+                raise ValueError("neither ZotFile used or file types specified")
             try:
                 if isinstance(file_types, str):
                     file_types = tuple(
@@ -311,6 +337,7 @@ class Zot:
         # Relocate the unlinked files to a designated directory with a map to their orginal paths
         relocation_foldername_parts = ["_unlinked_files"]
         if foldername_suffix:
+            self._foldername_suffix = foldername_suffix
             relocation_foldername_parts.append(foldername_suffix)
         relocation_directory = self._attachment_root_directory / "_".join(
             relocation_foldername_parts
@@ -336,7 +363,7 @@ class Zot:
             )
             unlinked_file_path.rename(unlinked_file_relocated_path)
         if relocation_map:
-            self.unlinked_files_relocation_map = relocation_map
+            self._unlinked_files_relocation_map = relocation_map
             relocation_map_path = relocation_directory / "_relocation_map.json"
             if relocation_map_path.is_file():
                 with relocation_map_path.open("rt") as fh:
@@ -351,44 +378,83 @@ class Zot:
 
     def remove_unlinked_files(
         self,
-        unrelocated_unlinked_files=True,
-        relocated_unlinked_files=True,
-        relocation_maps=None,
+        this_relocation=True,
+        past_relocation=False,
+        non_relocation=False,
+        **kargs,
     ):
         """Remove the linked files by the given criterion, all are removed by default.
 
         Parameters
         ----------
-        relocation_maps : dict or ierable(dict), optional
-            Files relocation map for removal.
-            Warning! If not specified, all the relocated files will be removed
-
-        TODO: add an option to specify `relocation_map_paths`, consider recursive.
+        this_relocation : bool, optional
+            Whether or not to remove relocated files in the current session.
+        past_relocation : bool, optional
+            Whether or not to remove all unlinked files that have been relocated in previous sessions.
+        non_relocation : bool, optional
+            Whether or not to remove all unlinked files that have yet to be identified and relocated,
+            `this_relocation` and `non_relocation` should not be both True.
+        **kargs:
+            Parameters for `self.retrieve_unlinked_files_relocation_maps` and/or `self.relocate_unlinked_files`.
 
         """
-        if relocation_maps:
-            # ugly and unreliable workaround to separate a single dict and a generator, revision needed
-            try:
-                relocation_maps = (relocation_maps,)
-            except:
-                relocation_maps = tuple(relocation_maps)
-        else:
-            relocation_maps = self.retrieve_unlinked_files_relocation_maps()
+        if this_relocation and non_relocation:
+            raise ValueError(
+                "'this_relocation' and 'non_relocation' cannot be both True"
+            )
 
+        # Retrieve the unlinked files relocation maps
+        relocation_maps = []
+        if this_relocation:
+            if hasattr(self, "_unlinked_files_relocation_map"):
+                relocation_maps.append(self._unlinked_files_relocation_map)
+            else:
+                raise ValueError("no relocation done previously in this session")
+        if past_relocation:
+            include = kargs.pop("include", None)
+            exclude = kargs.pop("exclude", None)
+            relocation_foldername_parts = ["_unlinked_files"]
+            if hasattr(self, "_unlinked_files_relocation_map"):
+                if self._foldername_suffix:
+                    relocation_foldername_parts.append(self._foldername_suffix)
+                this_relocation_foldername = "_".join(relocation_foldername_parts)
+                exclude = (
+                    (
+                        (this_relocation_foldername, exclude)
+                        if isinstance(exclude, str)
+                        else (this_relocation_foldername, *exclude)
+                    )
+                    if exclude
+                    else this_relocation_foldername
+                )
+            relocation_maps.extend(
+                self.retrieve_unlinked_files_relocation_maps(
+                    include=include, exclude=exclude
+                )
+            )
+        if non_relocation:
+            zotfile = kargs.pop("zotfile", True)
+            file_types = kargs.pop("file_types", None)
+            foldername_suffix = kargs.pop(
+                "foldername_suffix", dt.datetime.now().strftime("%Y%m%d%H%M%S")
+            )
+            self.relocate_unlinked_files(zotfile, file_types, foldername_suffix)
+            relocation_maps.append(self._unlinked_files_relocation_map)
+
+        # Remove the unlinked files
+        # pathlib.Path.unlink(missing_ok=True) in Python 3.8
         for relocation_map in relocation_maps:
             relocation_map_path = None
             for path in map(lambda x: Path(x), relocation_map.keys()):
-                # path.unlink(missing_ok=True) in Python 3.8
                 if path.is_file():
                     path.unlink()
-                    if relocation_map_path is None:
+                    if not relocation_map_path:
                         relocation_map_path = path.parent / "_relocation_map.json"
-                else:
-                    continue
-            try:
+            if relocation_map_path.is_file():
                 relocation_map_path.unlink()
-            except:
-                continue
+
+        # Remove the empty directories
+        remove_empty_directories(self._attachment_root_directory)
 
     def restore_unlinked_files(self):
         pass
