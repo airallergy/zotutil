@@ -1,12 +1,13 @@
-from pyzotero.zotero import Zotero
 from configparser import ConfigParser
 from pathlib import PurePath, Path
-import re
-import datetime as dt
-import sys
-from zipfile import ZipFile
 from io import TextIOWrapper
+from zipfile import ZipFile
+import datetime as dt
 import json
+import sys
+import re
+
+from pyzotero.zotero import Zotero
 
 from .tools import remove_empty_directories
 
@@ -132,7 +133,7 @@ class Zot:
                 profile_config = ConfigParser()
                 profile_config.read(self._profile_directory / "profiles.ini")
                 try:
-                    plugin_xpi_path = list(
+                    plugin_xpi_path = tuple(
                         (
                             self._profile_directory
                             / profile_config["Profile0"]["Path"]
@@ -150,14 +151,14 @@ class Zot:
         else:
             raise ValueError("invalid preference type: " + str(preference_type))
 
-    def _retrieve_preference(self, preference_key, **kargs):
+    def _retrieve_preference(self, preference_key, **kwargs):
         """Retrieve the preference file path.
 
         Parameters
         ----------
         preference_key : str
             Key to requested preference defined by Zotero.
-        **kargs:
+        **kwargs:
             Parameters for `self._retrieve_preference_path`.
 
         Returns
@@ -168,8 +169,8 @@ class Zot:
         TODO: future revision for `zipfile` for Python 3.8 and above
 
         """
-        preference_type = kargs.pop("preference_type", "user")
-        preference_owner = kargs.pop("preference_owner", None)
+        preference_type = kwargs.pop("preference_type", "user")
+        preference_owner = kwargs.pop("preference_owner", None)
 
         re_pattern = '(?<=pref\("' + preference_key + '", ").*(?="\);)'
         if preference_type == "default" and (not preference_owner == "zotero"):
@@ -191,6 +192,49 @@ class Zot:
             return re.search(re_pattern, preferences).group(0)
         except:
             raise ValueError('no "' + preference_key + '" information found')
+
+    def _retrieve_unlinked_files_relocation_maps(self, **kwargs):
+        this_relocation = kwargs.pop("this_relocation", False)
+        past_relocation = kwargs.pop("past_relocation", False)
+        non_relocation = kwargs.pop("non_relocation", False)
+
+        relocation_maps = []
+        if this_relocation:
+            if hasattr(self, "_unlinked_files_relocation_map"):
+                relocation_maps.append(self._unlinked_files_relocation_map)
+            else:
+                raise ValueError("no relocation done previously in this session")
+        if past_relocation:
+            include = kwargs.pop("include", None)
+            exclude = kwargs.pop("exclude", None)
+            relocation_foldername_parts = ["_unlinked_files"]
+            if hasattr(self, "_unlinked_files_relocation_map"):
+                if hasattr(self, "_foldername_suffix"):
+                    relocation_foldername_parts.append(self._foldername_suffix)
+                this_relocation_foldername = "_".join(relocation_foldername_parts)
+                exclude = (
+                    (
+                        (this_relocation_foldername, exclude)
+                        if isinstance(exclude, str)
+                        else (this_relocation_foldername, *exclude)
+                    )
+                    if exclude
+                    else this_relocation_foldername
+                )
+            relocation_maps.extend(
+                self.retrieve_unlinked_files_relocation_maps_by_file(
+                    include=include, exclude=exclude
+                )
+            )
+        if non_relocation:
+            zotfile = kwargs.pop("zotfile", True)
+            file_types = kwargs.pop("file_types", None)
+            foldername_suffix = kwargs.pop(
+                "foldername_suffix", dt.datetime.now().strftime("%Y%m%d%H%M%S")
+            )
+            self.relocate_unlinked_files(zotfile, file_types, foldername_suffix)
+            relocation_maps.append(self._unlinked_files_relocation_map)
+        return tuple(relocation_maps)
 
     # def retrieve_entries(self, **kwargs):
     #     if "limit" in kwargs:
@@ -241,8 +285,10 @@ class Zot:
             attachment_relative_paths.append(attachment_relative_path)
         return tuple(attachment_relative_paths)
 
-    def retrieve_unlinked_files_relocation_maps(self, include=None, exclude=None):
-        """Retrieve the path maps generated in the unlinked files relocation.
+    def retrieve_unlinked_files_relocation_maps_by_file(
+        self, include=None, exclude=None
+    ):
+        """Retrieve the files relocation maps written into json files.
 
         Parameters
         ----------
@@ -377,21 +423,21 @@ class Zot:
         this_relocation=True,
         past_relocation=False,
         non_relocation=False,
-        **kargs,
+        **kwargs,
     ):
-        """Remove the linked files by the given criterion, all are removed by default.
+        """Remove the linked files by the given criterion, only those relocated in the same session are removed by default.
 
         Parameters
         ----------
         this_relocation : bool, optional
-            Whether or not to remove relocated files in the current session.
+            Whether or not to remove files relocated in the current session.
         past_relocation : bool, optional
-            Whether or not to remove all unlinked files that have been relocated in previous sessions.
+            Whether or not to remove files that have been relocated in previous sessions.
         non_relocation : bool, optional
-            Whether or not to remove all unlinked files that have yet to be identified and relocated,
+            Whether or not to remove files that have yet to be identified and relocated,
             `this_relocation` and `non_relocation` should not be both True.
-        **kargs:
-            Parameters for `self.retrieve_unlinked_files_relocation_maps` and/or `self.relocate_unlinked_files`.
+        **kwargs:
+            Parameters for `self.retrieve_unlinked_files_relocation_maps_by_file` and/or `self.relocate_unlinked_files`.
 
         """
         if this_relocation and non_relocation:
@@ -399,43 +445,12 @@ class Zot:
                 "'this_relocation' and 'non_relocation' cannot be both True"
             )
 
-        # Retrieve the unlinked files relocation maps
-        relocation_maps = []
-        if this_relocation:
-            if hasattr(self, "_unlinked_files_relocation_map"):
-                relocation_maps.append(self._unlinked_files_relocation_map)
-            else:
-                raise ValueError("no relocation done previously in this session")
-        if past_relocation:
-            include = kargs.pop("include", None)
-            exclude = kargs.pop("exclude", None)
-            relocation_foldername_parts = ["_unlinked_files"]
-            if hasattr(self, "_unlinked_files_relocation_map"):
-                if self._foldername_suffix:
-                    relocation_foldername_parts.append(self._foldername_suffix)
-                this_relocation_foldername = "_".join(relocation_foldername_parts)
-                exclude = (
-                    (
-                        (this_relocation_foldername, exclude)
-                        if isinstance(exclude, str)
-                        else (this_relocation_foldername, *exclude)
-                    )
-                    if exclude
-                    else this_relocation_foldername
-                )
-            relocation_maps.extend(
-                self.retrieve_unlinked_files_relocation_maps(
-                    include=include, exclude=exclude
-                )
-            )
-        if non_relocation:
-            zotfile = kargs.pop("zotfile", True)
-            file_types = kargs.pop("file_types", None)
-            foldername_suffix = kargs.pop(
-                "foldername_suffix", dt.datetime.now().strftime("%Y%m%d%H%M%S")
-            )
-            self.relocate_unlinked_files(zotfile, file_types, foldername_suffix)
-            relocation_maps.append(self._unlinked_files_relocation_map)
+        relocation_maps = self._retrieve_unlinked_files_relocation_maps(
+            this_relocation=this_relocation,
+            past_relocation=past_relocation,
+            non_relocation=non_relocation,
+            **kwargs,
+        )
 
         # Remove the unlinked files
         # pathlib.Path.unlink(missing_ok=True) in Python 3.8
@@ -443,15 +458,54 @@ class Zot:
             relocation_map_path = None
             for path in map(lambda x: Path(x), relocation_map.keys()):
                 if path.is_file():
-                    path.unlink()
                     if not relocation_map_path:
                         relocation_map_path = path.parent / "_relocation_map.json"
+                    path.unlink()
             if relocation_map_path.is_file():
                 relocation_map_path.unlink()
 
         # Remove the empty directories
         remove_empty_directories(self._attachment_root_directory)
 
-    def restore_unlinked_files(self):
-        pass
+    def restore_unlinked_files(
+        self, this_relocation=True, past_relocation=False, **kwargs
+    ):
+        """Restore the linked files by the given criterion, only those relocated in the same session are removed by default.
+
+        Parameters
+        ----------
+        this_relocation : bool, optional
+            Whether or not to restore relocated files in the current session.
+        past_relocation : bool, optional
+            Whether or not to restore files that have been relocated in previous sessions.
+        **kwargs:
+            Parameters for `self.retrieve_unlinked_files_relocation_maps_by_file()`.
+
+        """
+        relocation_maps = self._retrieve_unlinked_files_relocation_maps(
+            this_relocation=this_relocation, past_relocation=past_relocation, **kwargs
+        )
+
+        # Restore the unlinked files
+        for relocation_map in relocation_maps:
+            relocation_map_path = None
+            for relocated_path, original_path in relocation_map.items():
+                relocated_path = Path(relocated_path)
+                original_path = Path(original_path)
+                if relocated_path.is_file():
+                    if not relocation_map_path:
+                        relocation_map_path = (
+                            relocated_path.parent / "_relocation_map.json"
+                        )
+                    if not original_path.parent.is_dir():
+                        original_path.parent.mkdir(parents=True)
+                    if original_path.is_file():
+                        # very rare, just in case
+                        raise ValueError("'" + str(original_path) + "' already exists")
+                    relocated_path.rename(original_path)
+            if relocation_map_path.is_file():
+                relocation_map_path.unlink()
+
+        # Remove the empty directories
+        remove_empty_directories(self._attachment_root_directory)
 

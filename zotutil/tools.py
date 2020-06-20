@@ -9,7 +9,6 @@ def remove_empty_directories(root_directory):
     for directory in tuple(item for item in root_directory.iterdir() if item.is_dir()):
         if not tuple(directory.glob("*")):
             directory.rmdir()
-            remove_empty_directories(directory.parent)
         else:
             remove_empty_directories(directory)
 
