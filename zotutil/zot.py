@@ -508,4 +508,3 @@ class Zot:
 
         # Remove the empty directories
         remove_empty_directories(self._attachment_root_directory)
-

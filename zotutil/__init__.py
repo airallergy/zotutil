@@ -1,12 +1,5 @@
-"""
-Variable Naming Rules
----------------------
-Pattern:
-    path : file path as a `pathlib.Path` object.
-    directory : folder path as a `pathlib.Path` object.
-    item : uncertain file or folder path as a `pathlib.Path` object.
+"""Top-level package for ZotUtil."""
 
-Exception :
-    `path` or `directory` in function arguments can be a `str` object as well.
-
-"""
+__author__ = """Cheng Cui"""
+__email__ = "cheng.cui.95@gmail.com"
+__version__ = "0.1.0"
