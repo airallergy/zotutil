@@ -11,18 +11,22 @@ def tmp_file_sys(root_path):
     pytest-*/*
     ├── folder_0
     │   ├── folder_0_0
+    │   ├── (Thumbs.db)
     │   └── file_0_0.txt
     ├── folder_1
     │   └── folder_1_0
-    │       └── (.DS_Store)
+    │       ├── (.DS_Store)
+    │       └── (desktop.ini)
     ├── (.DS_Store)
     └── file_0.txt
 
     """
     paths_parts = (
         ("folder_0", "folder_0_0"),
+        ("folder_0", "Thumbs.db"),
         ("folder_0", "file_0_0.txt"),
         ("folder_1", "folder_1_0", ".DS_Store"),
+        ("folder_1", "folder_1_0", "desktop.ini"),
         (".DS_Store",),
         ("file_0.txt",),
     )
@@ -30,13 +34,13 @@ def tmp_file_sys(root_path):
     for path_parts in paths_parts:
         path = root_path
         for path_part in path_parts:
-            if (path_part == ".DS_Store") and (platform != "darwin"):
-                if path == root_path:
-                    continue
-                else:
-                    if not path.is_dir():
-                        path.mkdir()
-                    break
+            # if (path_part == ".DS_Store") and (platform != "darwin"):
+            #     if path == root_path:
+            #         continue
+            #     else:
+            #         if not path.is_dir():
+            #             path.mkdir()
+            #         break
             path /= path_part
             if "." in path_part:
                 with path.open("wt") as fh:
@@ -57,3 +61,9 @@ def test_remove_empty_directories(tmp_path):
     )
     for sub_path, expected in test_cases:
         assert (tmp_path / sub_path).is_dir() == expected
+    test_cases = (
+        (PurePath(".DS_Store"), True),
+        (PurePath("folder_0", "Thumbs.db"), True),
+    )
+    for sub_path, expected in test_cases:
+        assert (tmp_path / sub_path).is_file() == expected
